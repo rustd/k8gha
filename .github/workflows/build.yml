@@ -8,27 +8,27 @@ on:
 jobs:
   job1:
     runs-on: ubuntu-latest
-    name: job1
+    name: build discover and deploy
     steps:
-      - name: start minikube
+      - uses: actions/checkout@v2
+      - name: Start minikube
         uses: medyagh/setup-minikube@latest
-        id: minikube
-        with:
-          cache: false
-          minikube-version: 1.24.0
-          driver: docker
-          container-runtime: containerd
-          kubernetes-version: v1.22.3
-          cpus: 4
-          memory: 4000m
-          cni: bridge
-          addons: registry,ingress
-          extra-config: 'kubelet.max-pods=10'
-          feature-gates: 'DownwardAPIHugePages=true'
-          mount-path: '/Users/user1/test-files:/testdata'
-          wait: false
-          insecure-registry: 'localhost:5000,10.0.0.0/24'
-          start-args: '--delete-on-failure --subnet 192.168.50.0'
       # now you can run kubectl to see the pods in the cluster
-      - name: kubectl
+      - name: Try the cluster!
         run: kubectl get pods -A
+      - name: Build image
+        run: |
+          export SHELL=/bin/bash
+          eval $(minikube -p minikube docker-env)
+          make build-image
+          echo -n "verifying images:"
+          docker images
+      - name: Deploy to minikube
+        run: |
+          kubectl apply -f deploy/deploy-minikube.yaml
+      - name: Test service URLs
+        run: |
+          minikube service list
+          minikube service discover --url
+          echo -n "------------------opening the service------------------"
+          curl $(minikube service discover --url)/version
