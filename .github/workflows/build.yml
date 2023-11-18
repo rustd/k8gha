@@ -6,29 +6,44 @@ on:
   workflow_dispatch:
 
 jobs:
-  job1:
-    runs-on: ubuntu-latest
-    name: build discover and deploy
+  build:
+    strategy:
+      matrix:
+          os: [ubuntu-latest, macos-10.15]
+          container-runtime: ['', 'containerd']
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v2
+      - name: Install Tools for MacOs
+        if: matrix.os == 'macos-10.15'
+        run: |
+          brew install docker-machine docker
+          sudo docker --version
+          VBoxManage --version
+          sysctl hw.physicalcpu hw.logicalcpu 
+        continue-on-error: true
+      - name: Install Kubectl
+        uses: azure/setup-kubectl@v1
       - name: Start minikube
         uses: medyagh/setup-minikube@latest
-      # now you can run kubectl to see the pods in the cluster
-      - name: Try the cluster!
+        with:
+          container-runtime: ${{ matrix.container-runtime }}
+      - name: Start minikube Again for fun
+        uses: medyagh/setup-minikube@latest
+        with:
+          container-runtime: ${{ matrix.container-runtime }}
+      - name: Try the cluster !
         run: kubectl get pods -A
-      - name: Build image
-        run: |
+      - name: Use Docker-Env Feature
+        if: matrix.container-runtime == ''
+        run: | 
           export SHELL=/bin/bash
           eval $(minikube -p minikube docker-env)
-          make build-image
-          echo -n "verifying images:"
           docker images
-      - name: Deploy to minikube
-        run: |
-          kubectl apply -f deploy/deploy-minikube.yaml
-      - name: Test service URLs
-        run: |
-          minikube service list
-          minikube service discover --url
-          echo -n "------------------opening the service------------------"
-          curl $(minikube service discover --url)/version
+      - name: Use Podman-Env Feature
+        if: matrix.container-runtime == 'crio'
+        run: | 
+          export SHELL=/bin/bash
+          eval $(minikube -p minikube podman-env)
+          minikube ssh podman images
